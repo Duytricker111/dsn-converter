@@ -54,167 +54,111 @@ export function processPlatedHoles(
           layer: "all",
         })
         if (!processedPadstacks.has(name)) {
-          const iW = Math.round(hole.hole_width * 1000)
-          const iH = Math.round(hole.hole_height * 1000)
-          const oW = Math.round(hole.outer_width * 1000)
-          const oH = Math.round(hole.outer_height * 1000)
           pcb.library.padstacks.push(
-            createOvalPadstack(name, oW, oH, iW, iH, numLayers),
-          )
-          processedPadstacks.add(name)
-        }
-        return name
-      }
-      case "circular_hole_with_rect_pad": {
-        const name = getPadstackName({
-          shape: "rect",
-          width: hole.rect_pad_width * 1000,
-          height: hole.rect_pad_height * 1000,
-          layer: "all",
-        })
-        if (!processedPadstacks.has(name)) {
-          const oW = Math.round(hole.rect_pad_width * 1000)
-          const oH = Math.round(hole.rect_pad_height * 1000)
-          const hD = Math.round(hole.hole_diameter * 1000)
-          pcb.library.padstacks.push(
-            createCircularHoleRectangularPadstack(name, oW, oH, hD, numLayers),
+            createOvalPadstack(
+              name,
+              Math.round(hole.outer_width * 1000),
+              Math.round(hole.outer_height * 1000),
+              Math.round(hole.hole_width * 1000),
+              Math.round(hole.hole_height * 1000),
+              numLayers,
+            ),
           )
           processedPadstacks.add(name)
         }
         return name
       }
       default:
-        throw new Error(`Unsupported plated-hole shape: ${hole.shape}`)
+        return ""
     }
   }
-
-  /** Find or create an Image definition for the given footprint */
-  function ensureImage(name: string): Image {
-    let image = pcb.library.images.find((img) => img.name === name)
-    if (!image) {
-      image = { name, outlines: [], pins: [] }
-      pcb.library.images.push(image)
-    }
-    return image
-  }
-
-  /** Returns a generator that yields the next unique pin number for the image */
-  function createNextPinNumberGenerator(image: Image) {
-    let current =
-      image.pins.reduce((max, p) => {
-        const n = Number(
-          typeof p.pin_number === "string"
-            ? p.pin_number.replace(/pin/i, "")
-            : p.pin_number,
-        )
-        return Number.isNaN(n) ? max : Math.max(max, n)
-      }, 0) + 1
-    return () => current++
-  }
-
-  function findNumericHint(port?: SourcePort): number | undefined {
-    const hint = port?.port_hints?.find((h) => !Number.isNaN(Number(h)))
-    return hint !== undefined ? Number(hint) : undefined
-  }
-
-  /**
-   * MAIN
-   */
-
-  const componentsByFootprint = new Map<
-    string,
-    Array<{
-      componentName: string
-      coordinates: { x: number; y: number }
-      rotation: number
-      value: string
-      sourceComponent: SourceComponentBase | undefined
-    }>
-  >()
 
   for (const group of componentGroups) {
-    const { pcb_component_id, pcb_plated_holes, pcb_smtpads } = group
-    if (pcb_plated_holes.length === 0) continue
+    if (group.pcb_plated_holes.length === 0) continue
 
-    const pcbComponent = su(circuitElements)
-      .pcb_component.list()
-      .find((e) => e.pcb_component_id === pcb_component_id)
+    const pcbComponent = circuitElements.find(
+      (e) =>
+        e.type === "pcb_component" &&
+        e.pcb_component_id === group.pcb_component_id,
+    ) as any
     if (!pcbComponent) continue
 
-    const sourceComponent = su(circuitElements)
-      .source_component.list()
-      .find((e) => e.source_component_id === pcbComponent.source_component_id)
+    const sourceComponent = circuitElements.find(
+      (e) =>
+        e.type === "source_component" &&
+        e.source_component_id === pcbComponent.source_component_id,
+    ) as SourceComponentBase
+    if (!sourceComponent) continue
 
-    const footprintName = getFootprintName(sourceComponent!, pcbComponent!)
-    const image = ensureImage(footprintName)
-    const nextPinNumber = createNextPinNumberGenerator(image)
+    const footprintName = getFootprintName(pcbComponent, sourceComponent)
+    let image = pcb.library.images.find((img) => img.name === footprintName)
 
-    // Create/update pins for every plated hole
-    for (const hole of pcb_plated_holes) {
-      const padstackName = ensurePadstack(hole)
-
-      // Resolve sourcePort (if any)
-      const pcbPort = hole.pcb_port_id
-        ? su(circuitElements)
-            .pcb_port.list()
-            .find((e) => e.pcb_port_id === hole.pcb_port_id)
-        : undefined
-      const sourcePort = pcbPort
-        ? su(circuitElements)
-            .source_port.list()
-            .find((e) => e.source_port_id === pcbPort.source_port_id)
-        : undefined
-
-      const pinNumber = findNumericHint(sourcePort) ?? nextPinNumber()
-
-      const resolution = pcb.resolution.value || 1
-      const multiplier = 1000 * resolution
-      const pin: Pin = {
-        padstack_name: padstackName,
-        pin_number: pinNumber,
-        x: (Number(hole.x.toFixed(3)) - pcbComponent.center.x) * multiplier,
-        y: (Number(hole.y.toFixed(3)) - pcbComponent.center.y) * multiplier,
+    if (!image) {
+      image = {
+        name: footprintName,
+        pins: [],
       }
-
-      // Avoid duplicates
-      const duplicate = image.pins.some(
-        (p) =>
-          p.x === pin.x &&
-          p.y === pin.y &&
-          p.padstack_name === pin.padstack_name,
-      )
-      if (!duplicate) image.pins.push(pin)
+      pcb.library.images.push(image)
     }
 
-    // Record components that ONLY have plated holes (no SMT pads) for placement later
-    if (pcb_smtpads.length === 0) {
-      const key = footprintName
-      if (!componentsByFootprint.has(key)) componentsByFootprint.set(key, [])
+    const resolution = pcb.resolution.value
+    const multiplier = 1000 * resolution
 
-      const resolution = pcb.resolution.value || 1
-      const transformMmToDsnUnits = scale(1000 * resolution)
-      componentsByFootprint.get(key)!.push({
-        componentName: sourceComponent?.name || "Unknown",
-        coordinates: applyToPoint(transformMmToDsnUnits, pcbComponent.center),
-        rotation: pcbComponent.rotation || 0,
-        value: getComponentValue(sourceComponent),
-        sourceComponent,
-      })
+    for (const hole of group.pcb_plated_holes) {
+      const padstackName = ensurePadstack(hole)
+      const sourcePort = circuitElements.find(
+        (e) =>
+          e.type === "source_port" && e.source_port_id === hole.source_port_id,
+      ) as SourcePort
+
+      if (
+        !image.pins.some(
+          (p) =>
+            p.pin_number ===
+            (sourcePort?.port_hints?.find(
+              (h) => !Number.isNaN(Number(h)),
+            ) || 1),
+        )
+      ) {
+        // Apply rotation to the hole offset
+        const rotationRad = (pcbComponent.rotation * Math.PI) / 180
+        const cosR = Math.cos(rotationRad)
+        const sinR = Math.sin(rotationRad)
+
+        const dx = hole.x - pcbComponent.center.x
+        const dy = hole.y - pcbComponent.center.y
+
+        // The DSN format expects coordinates relative to the component center
+        // but rotated by the component's rotation.
+        // FREEROUTING/DSN coordinate system:
+        // x' = dx * cos(R) + dy * sin(R)
+        // y' = -dx * sin(R) + dy * cos(R)
+        const rotatedX = dx * cosR + dy * sinR
+        const rotatedY = -dx * sinR + dy * cosR
+
+        image.pins.push({
+          padstack_name: padstackName,
+          pin_number:
+            sourcePort?.port_hints?.find((h) => !Number.isNaN(Number(h))) ||
+            1,
+          x: Math.round(rotatedX * multiplier),
+          y: Math.round(rotatedY * multiplier),
+        })
+      }
     }
-  }
 
-  // Emit placement data for plated-hole-only footprints
-  for (const [footprint, comps] of componentsByFootprint) {
-    pcb.placement.components.push({
-      name: footprint,
-      places: comps.map((c) => ({
-        refdes: `${c.componentName}_${c.sourceComponent?.source_component_id}`,
-        x: c.coordinates.x,
-        y: c.coordinates.y,
-        side: "front" as const,
-        rotation: c.rotation,
-        PN: c.value,
-      })),
-    })
+    const dsnComponent = {
+      name: group.pcb_component_id,
+      image_name: footprintName,
+      placements: [
+        {
+          x: Math.round(pcbComponent.center.x * multiplier),
+          y: Math.round(pcbComponent.center.y * multiplier),
+          side: pcbComponent.side === "bottom" ? "back" : "front",
+          rotation: pcbComponent.rotation,
+        },
+      ],
+    }
+    pcb.placement.components.push(dsnComponent)
   }
 }
