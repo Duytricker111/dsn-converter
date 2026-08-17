@@ -11,6 +11,8 @@ import { getFootprintName } from "lib/utils/get-footprint-name"
 import { applyToPoint, scale } from "transformation-matrix"
 import type { ComponentGroup, DsnPcb, Image, Pin } from "../types"
 
+const transformMmToUm = scale(1000)
+
 export function processComponentsAndPads(
   componentGroups: ComponentGroup[],
   circuitElements: AnyCircuitElement[],
@@ -114,6 +116,7 @@ export function processComponentsAndPads(
             pad,
             pcbComponent,
             sourcePort,
+            resolution: pcb.resolution.value || 1,
           })
         })
         .filter((pin): pin is Pin => pin !== undefined),

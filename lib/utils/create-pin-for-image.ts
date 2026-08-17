@@ -8,10 +8,12 @@ export function createPinForImage({
   pad,
   pcbComponent,
   sourcePort,
+  resolution = 1,
 }: {
   pad: PcbSmtPad
   pcbComponent: PcbComponent
   sourcePort: SourcePort | undefined
+  resolution?: number
 }): Pin | undefined {
   if (!sourcePort) return undefined
 
@@ -56,16 +58,27 @@ export function createPinForImage({
     ? polygonPadGeometry!.center
     : { x: pad.x, y: pad.y }
 
-  // TODO resolution is not passed here, defaulting to 10 for now to match SmoothieBoard
-  // In a real fix, we should pass the pcb object or resolution value
-  const resolution = 10
   const multiplier = 1000 * resolution
 
+  // Apply rotation to the pad offset
+  const rotationRad = (pcbComponent.rotation * Math.PI) / 180
+  const cosR = Math.cos(rotationRad)
+  const sinR = Math.sin(rotationRad)
+
+  const dx = padCenter.x - pcbComponent.center.x
+  const dy = padCenter.y - pcbComponent.center.y
+
+  // Rotate the offset to match DSN's relative-to-component-center system
+  const rotatedX = dx * cosR + dy * sinR
+  const rotatedY = -dx * sinR + dy * cosR
+
   return {
-    name: sourcePort.name,
-    padstack: getPadstackName(padstackParams),
-    x: (pcbComponent.center.x + padCenter.x) * multiplier,
-    y: (pcbComponent.center.y + padCenter.y) * multiplier,
-    rotation: pcbComponent.rotation ?? 0,
+    padstack_name: getPadstackName(padstackParams),
+    pin_number:
+      sourcePort.pin_number ||
+      sourcePort.port_hints?.find((hint) => !Number.isNaN(Number(hint))) ||
+      1,
+    x: rotatedX * multiplier,
+    y: rotatedY * multiplier,
   }
 }
