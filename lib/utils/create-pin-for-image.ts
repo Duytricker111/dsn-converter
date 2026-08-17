@@ -56,11 +56,16 @@ export function createPinForImage({
     ? polygonPadGeometry!.center
     : { x: pad.x, y: pad.y }
 
+  // TODO resolution is not passed here, defaulting to 10 for now to match SmoothieBoard
+  // In a real fix, we should pass the pcb object or resolution value
+  const resolution = 10
+  const multiplier = 1000 * resolution
+
   return {
     padstack_name: getPadstackName(padstackParams),
     pin_number:
       sourcePort.port_hints?.find((hint) => !Number.isNaN(Number(hint))) || 1,
-    x: (padCenter.x - pcbComponent.center.x) * 1000,
-    y: (padCenter.y - pcbComponent.center.y) * 1000,
+    x: (padCenter.x - pcbComponent.center.x) * multiplier,
+    y: (padCenter.y - pcbComponent.center.y) * multiplier,
   }
 }
