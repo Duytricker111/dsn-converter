@@ -1,78 +1,4 @@
 import { su } from "@tscircuit/soup-util"
-
-import type {
-  
-  AnyCircuitElement,
-  
-  PcbComponent,
-  
-  SourceComponentBase,
-  
-} from "circuit-json"
-
-import { createAndAddPadstackFromPcbSmtPad } from "lib/utils/create-and-add-padstack-for-pcb-smtpad"
-
-import { createPinForImage } from "lib/utils/create-pin-for-image"
-
-import { getComponentValue } from "lib/utils/get-component-value"
-
-import { getFootprintName } from "lib/utils/get-footprint-name"
-
-import { applyToPoint, scale } from "transformation-matrix"
-
-import type { ComponentGroup, DsnPcb, Image, Pin } from "../types"
-
-
-
-const transformMmToUm = scale(1000)
-
-
-
-export function processComponentsAndPads(
-  
-  componentGroups: ComponentGroup[],
-  
-  circuitElements: AnyCircuitElement[],
-  
-  pcb: DsnPcb,
-  
-) {
-  
-  const processedPadstacks = new Set<string>()
-  
-  const componentsByFootprint = new Map<
-    
-    string,
-    
-    Array<{
-      
-      componentName: string
-      
-      coordinates: { x: number; y: number }
-      
-      rotation: number
-      
-      value: string
-      
-      sourceComponent: SourceComponentBase | undefined
-      
-    }>
-    
-  >()
-  
-
-  
-  // First pass: Group components by footprint
-  
-  for (const group of componentGroups) {
-    
-    const { pcb_component_id, pcb_smtpads } = group
-    
-    if (pcb_smtpads.length === 0) continue
-    
-
-    
-    const pcbComponent = su(circuitElements)
 import type {
   AnyCircuitElement,
   PcbComponent,
@@ -84,8 +10,6 @@ import { getComponentValue } from "lib/utils/get-component-value"
 import { getFootprintName } from "lib/utils/get-footprint-name"
 import { applyToPoint, scale } from "transformation-matrix"
 import type { ComponentGroup, DsnPcb, Image, Pin } from "../types"
-
-const transformMmToUm = scale(1000)
 
 export function processComponentsAndPads(
   componentGroups: ComponentGroup[],
