@@ -56,17 +56,8 @@ export function convertCircuitJsonToDsnJson(
       },
       via: defaultViaName,
       rule: {
-        // Default clearance having fallback value
-        clearances: [
-          {
-            value: options.traceClearance ?? 150,
-          },
-          {
-            value: 50,
-            type: "smd_smd",
-          },
-        ],
-        width: 200,
+        width: 250,
+        clearance: options.traceClearance ?? 250,
       },
     },
     placement: {
@@ -77,111 +68,85 @@ export function convertCircuitJsonToDsnJson(
       padstacks: [
         {
           name: defaultViaName,
-          shapes: layerNames.map((name) => ({
-            shapeType: "circle" as const,
-            layer: name,
-            diameter: 600,
-          })),
-          attach: "off",
+          shapes: [
+            {
+              shape: "circle",
+              layer: "all",
+              diameter: 600,
+            },
+          ],
         },
       ],
     },
     network: {
       nets: [],
-      classes: [
-        {
-          name: "kicad_default",
-          description: "",
-          net_names: [],
-          circuit: {
-            use_via: defaultViaName,
-          },
-          rule: {
-            // Actual value being used in the dsn for the specific network class
-            clearances: [
-              {
-                value: options.traceClearance ?? 150, // standard value
-              },
-            ],
-            width: 150, // trace width used in freerouting
-          },
-        },
-      ],
     },
     wiring: {
-      wires: [],
+      traces: [],
     },
   }
 
-  const componentGroups = groupComponents(circuitElements)
+  const componentGroups = groupCircuitElements(circuitElements)
+
   processComponentsAndPads(componentGroups, circuitElements, pcb)
   processPlatedHoles(componentGroups, circuitElements, pcb, numLayers)
   processNets(circuitElements, pcb)
-  processPcbTraces(circuitElements, pcb, numLayers)
+  processPcbTraces(circuitElements, pcb)
+
   return pcb
 }
 
 function calculateBoardBoundary(
-  pcbBoard: {
-    width: number
-    height: number
-    center: { x: number; y: number }
-  },
-  resolution = 1,
-): number[] {
-  // default to 100mm x 100mm if not provided
-  const width = pcbBoard?.width ?? 100
-  const height = pcbBoard?.height ?? 100
-  const x = pcbBoard?.center?.x ?? 0
-  const y = pcbBoard?.center?.y ?? 0
+  pcbBoard:
+    | (AnyCircuitElement & {
+        width: number
+        height: number
+        center: { x: number; y: number }
+      })
+    | undefined,
+  resolution: number,
+): { x: number; y: number }[] {
+  if (!pcbBoard) return []
 
-  // Convert dimensions from mm to DSN units (um * resolution)
   const multiplier = 1000 * resolution
-  const halfWidth = (width * multiplier) / 2
-  const halfHeight = (height * multiplier) / 2
-  const centerX = x * multiplier
-  const centerY = y * multiplier
+  const halfWidth = (pcbBoard.width / 2) * multiplier
+  const halfHeight = (pcbBoard.height / 2) * multiplier
+  const centerX = pcbBoard.center.x * multiplier
+  const centerY = pcbBoard.center.y * multiplier
 
-  // Return coordinates for a rectangular boundary path
-  // Format: [x1, y1, x2, y2, x3, y3, x4, y4, x1, y1] to close the path
   return [
-    centerX - halfWidth,
-    centerY - halfHeight, // Top left
-    centerX + halfWidth,
-    centerY - halfHeight, // Top right
-    centerX + halfWidth,
-    centerY + halfHeight, // Bottom right
-    centerX - halfWidth,
-    centerY + halfHeight, // Bottom left
-    centerX - halfWidth,
-    centerY - halfHeight, // Back to top left to close the path
+    { x: centerX - halfWidth, y: centerY - halfHeight },
+    { x: centerX + halfWidth, y: centerY - halfHeight },
+    { x: centerX + halfWidth, y: centerY + halfHeight },
+    { x: centerX - halfWidth, y: centerY + halfHeight },
   ]
 }
 
-function groupComponents(
+function groupCircuitElements(
   circuitElements: AnyCircuitElement[],
 ): ComponentGroup[] {
-  const componentMap = new Map<string, ComponentGroup>()
+  const componentGroups: ComponentGroup[] = []
 
-  for (const element of circuitElements) {
-    if (element.type === "pcb_smtpad" || element.type === "pcb_plated_hole") {
-      const componentId = element.pcb_component_id ?? ""
+  const pcbComponents = circuitElements.filter(
+    (e) => e.type === "pcb_component",
+  ) as any[]
 
-      if (!componentMap.has(componentId)) {
-        componentMap.set(componentId, {
-          pcb_component_id: componentId,
-          pcb_smtpads: [],
-          pcb_plated_holes: [],
-        })
-      }
-
-      if (element.type === "pcb_smtpad") {
-        componentMap.get(componentId)?.pcb_smtpads.push(element)
-      } else if (element.type === "pcb_plated_hole") {
-        componentMap.get(componentId)?.pcb_plated_holes.push(element)
-      }
+  for (const pcbComponent of pcbComponents) {
+    const group: ComponentGroup = {
+      pcb_component_id: pcbComponent.pcb_component_id,
+      pcb_smt_pads: circuitElements.filter(
+        (e) =>
+          e.type === "pcb_smt_pad" &&
+          e.pcb_component_id === pcbComponent.pcb_component_id,
+      ) as any[],
+      pcb_plated_holes: circuitElements.filter(
+        (e) =>
+          e.type === "pcb_plated_hole" &&
+          e.pcb_component_id === pcbComponent.pcb_component_id,
+      ) as any[],
     }
+    componentGroups.push(group)
   }
 
-  return Array.from(componentMap.values())
+  return componentGroups
 }
