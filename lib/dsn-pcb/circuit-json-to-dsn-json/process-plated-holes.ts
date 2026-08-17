@@ -15,8 +15,6 @@ import { getPadstackName } from "lib/utils/get-padstack-name"
 import { applyToPoint, scale } from "transformation-matrix"
 import type { ComponentGroup, DsnPcb, Image, Pin } from "../types"
 
-const transformMmToUm = scale(1000)
-
 export function processPlatedHoles(
   componentGroups: ComponentGroup[],
   circuitElements: AnyCircuitElement[],
@@ -198,4 +196,25 @@ export function processPlatedHoles(
       componentsByFootprint.get(key)!.push({
         componentName: sourceComponent?.name || "Unknown",
         coordinates: applyToPoint(transformMmToDsnUnits, pcbComponent.center),
-        rotation:
+        rotation: pcbComponent.rotation || 0,
+        value: getComponentValue(sourceComponent),
+        sourceComponent,
+      })
+    }
+  }
+
+  // Emit placement data for plated-hole-only footprints
+  for (const [footprint, comps] of componentsByFootprint) {
+    pcb.placement.components.push({
+      name: footprint,
+      places: comps.map((c) => ({
+        refdes: `${c.componentName}_${c.sourceComponent?.source_component_id}`,
+        x: c.coordinates.x,
+        y: c.coordinates.y,
+        side: "front" as const,
+        rotation: c.rotation,
+        PN: c.value,
+      })),
+    })
+  }
+}
