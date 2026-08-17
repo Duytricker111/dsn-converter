@@ -169,11 +169,13 @@ export function processPlatedHoles(
 
       const pinNumber = findNumericHint(sourcePort) ?? nextPinNumber()
 
+      const resolution = pcb.resolution.value || 1
+      const multiplier = 1000 * resolution
       const pin: Pin = {
         padstack_name: padstackName,
         pin_number: pinNumber,
-        x: (Number(hole.x.toFixed(3)) - pcbComponent.center.x) * 1000,
-        y: (Number(hole.y.toFixed(3)) - pcbComponent.center.y) * 1000,
+        x: (Number(hole.x.toFixed(3)) - pcbComponent.center.x) * multiplier,
+        y: (Number(hole.y.toFixed(3)) - pcbComponent.center.y) * multiplier,
       }
 
       // Avoid duplicates
@@ -191,28 +193,9 @@ export function processPlatedHoles(
       const key = footprintName
       if (!componentsByFootprint.has(key)) componentsByFootprint.set(key, [])
 
+      const resolution = pcb.resolution.value || 1
+      const transformMmToDsnUnits = scale(1000 * resolution)
       componentsByFootprint.get(key)!.push({
         componentName: sourceComponent?.name || "Unknown",
-        coordinates: applyToPoint(transformMmToUm, pcbComponent.center),
-        rotation: pcbComponent.rotation || 0,
-        value: getComponentValue(sourceComponent),
-        sourceComponent,
-      })
-    }
-  }
-
-  // Emit placement data for plated-hole-only footprints
-  for (const [footprint, comps] of componentsByFootprint) {
-    pcb.placement.components.push({
-      name: footprint,
-      places: comps.map((c) => ({
-        refdes: `${c.componentName}_${c.sourceComponent?.source_component_id}`,
-        x: c.coordinates.x,
-        y: c.coordinates.y,
-        side: "front" as const,
-        rotation: c.rotation % 90,
-        PN: c.value,
-      })),
-    })
-  }
-}
+        coordinates: applyToPoint(transformMmToDsnUnits, pcbComponent.center),
+        rotation:
