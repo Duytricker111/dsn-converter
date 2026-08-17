@@ -1,5 +1,4 @@
 import type { PcbSmtPad } from "circuit-json"
-
 import type { PcbComponent, SourcePort } from "circuit-json"
 import type { Pin } from "lib"
 import { type PadstackNameArgs, getPadstackName } from "./get-padstack-name"
@@ -52,6 +51,7 @@ export function createPinForImage({
     layer: pad.layer as PcbSmtPad["layer"],
     customDescriptor,
   }
+
   const padCenter = isPolygon
     ? polygonPadGeometry!.center
     : { x: pad.x, y: pad.y }
@@ -62,10 +62,10 @@ export function createPinForImage({
   const multiplier = 1000 * resolution
 
   return {
-    padstack_name: getPadstackName(padstackParams),
-    pin_number:
-      sourcePort.port_hints?.find((hint) => !Number.isNaN(Number(hint))) || 1,
-    x: (padCenter.x - pcbComponent.center.x) * multiplier,
-    y: (padCenter.y - pcbComponent.center.y) * multiplier,
+    name: sourcePort.name,
+    padstack: getPadstackName(padstackParams),
+    x: (pcbComponent.center.x + padCenter.x) * multiplier,
+    y: (pcbComponent.center.y + padCenter.y) * multiplier,
+    rotation: pcbComponent.rotation ?? 0,
   }
 }
